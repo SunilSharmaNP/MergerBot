@@ -124,7 +124,7 @@ async def clear_handler(bot, message):
     if user_id in QueueDB: del QueueDB[user_id]
     if user_id in ReplyDB: del ReplyDB[user_id]
     
-    await cleanup_manager.clean_user_```ectory(user_id)
+    await cleanup_manager.clean_user_directory(user_id)
     await message.reply_text("✅ **Queue cleared successfully!**")
 
 @NubBot.on_message((filters.video | filters.document) & filters.private)
