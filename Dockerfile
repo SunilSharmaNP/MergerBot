@@ -1,5 +1,5 @@
 # Stage 1: Build stage with build dependencies
-FROM python:3.9-slim-buster AS builder
+FROM python:3.9-slim-bullseye AS builder
 
 # Set working directory
 WORKDIR /usr/src/app
@@ -16,7 +16,7 @@ RUN pip wheel --no-cache-dir --wheel-dir=/usr/src/app/wheels -r requirements.txt
 
 
 # Stage 2: Final production stage
-FROM python:3.9-slim-buster
+FROM python:3.9-slim-bullseye
 
 # Set working directory
 WORKDIR /app
