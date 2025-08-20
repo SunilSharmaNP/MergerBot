@@ -175,7 +175,7 @@ async def media_handler(bot, message):
         await message.reply_text(f"❌ **Error:** `{str(e)}`")
 
 
-@NubBot.on_message(filters.text & filters.private & ~filters.command())
+@NubBot.on_message(filters.text & filters.private & ~filters.command)
 async def url_handler(bot, message):
     user_id = message.from_user.id
 
