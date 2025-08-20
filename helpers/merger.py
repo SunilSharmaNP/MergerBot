@@ -192,7 +192,7 @@ class VideoMerger:
         with open(self.input_file, 'w', encoding='utf-8') as f:
             for video_path in video_list:
                 # Use absolute path and escape special characters
-                escaped_path = video_path.replace('\', '/').replace("'", "\'")
+                escaped_path = video_path.replace('\\', '/').replace("'", "\\'")
                 f.write(f"file '{escaped_path}'\n")
 
         logger.debug(f"Created input file: {self.input_file}")
