@@ -1,5 +1,5 @@
 # Enhanced VideoMerge-Bot with Direct Download & GoFile Integration
-
+# (c) @AbirHasan2005 - Enhanced Version
 
 import asyncio
 import os
@@ -64,7 +64,7 @@ async def start_handler(bot, message):
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📚 Help", callback_data="help"),
                  InlineKeyboardButton("⚙️ Settings", callback_data="settings")],
-                [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/AbirHasan2005")]
+                [InlineKeyboardButton("👨💻 Developer", url="https://t.me/AbirHasan2005")]
             ])
         )
     except Exception as e:
@@ -103,7 +103,7 @@ async def merge_handler(bot, message):
             duration = await get_video_duration(merged_video)
             width, height = await get_video_resolution(merged_video)
             file_size = os.path.getsize(merged_video)
-            thumbnail_path = (await merger.generate_thumbnails(merged_video, count=1))[0]
+            thumbnail_path = (await merger.generate_thumbnails(merged_video, count=1)) if await merger.generate_thumbnails(merged_video, count=1) else None
             
             await UploadVideo(bot, message, merged_video, width, height, duration, thumbnail_path, file_size)
             
@@ -138,7 +138,7 @@ async def media_handler(bot, message):
             if not await ForceSub(bot, message):
                 return
         
-        is_spam, wait_time = await CheckTime```(user_id)
+        is_spam, wait_time = await CheckTimeGap(user_id)
         if is_spam:
             await message.reply_text(Config.ERROR_MESSAGES['spam_protection'].format(seconds=wait_time))
             return
@@ -148,7 +148,7 @@ async def media_handler(bot, message):
             return
 
         media = message.video or message.document
-        if not media.mime_type or "video" not``` media.mime_type:
+        if not media.mime_type or "video" not in media.mime_type:
             await message.reply_text("❌ Please send only video files.")
             return
 
@@ -192,7 +192,7 @@ async def url_handler(bot, message):
                 return
 
             if len(QueueDB.get(user_id, [])) >= Config.MAX_VIDEOS:
-                await message.reply```xt(Config.ERROR_MESSAGES['queue_full'].format(max_videos=Config.MAX_VIDEOS))
+                await message.reply_text(Config.ERROR_MESSAGES['queue_full'].format(max_videos=Config.MAX_VIDEOS))
                 return
 
             download_msg = await message.reply_text("🔄 **Processing URL...**", quote=True)
@@ -229,9 +229,28 @@ async def callback_handler(bot, cb: CallbackQuery):
         await OpenSettings(cb.message)
     elif cb.data == "merge_now":
         await cb.message.delete()
-        await merge_handler(bot, cb.message)
+        # This needs a message object, not a callback query's message
+        # A bit tricky, we might need to find the original command message to reply to.
+        # For simplicity, sending a new message.
+        await bot.send_message(cb.message.chat.id, "Merge command received from button press. Starting now...")
+        # A better approach would be to pass the original message object around.
+        # But for a quick fix, let's assume we need to trigger merge_handler differently.
+        # This is a conceptual fix; the `merge_handler` expects `message` to have `from_user`.
+        # cb.message doesn't always have this. We use cb.from_user.
+        
+        # A simple fake message object to satisfy the handler's needs
+        class FakeMessage:
+            def __init__(self, user, chat):
+                self.from_user = user
+                self.chat = chat
+            async def reply_text(self, *args, **kwargs):
+                return await bot.send_message(self.chat.id, *args, **kwargs)
+
+        fake_message = FakeMessage(cb.from_user, cb.message.chat)
+        await merge_handler(bot, fake_message)
+        
     elif cb.data == "clear_queue":
-        await clear_handler(bot, cb.message)
+        await clear_handler(bot, cb.message) # cb.message works here
     elif cb.data.startswith("trigger") or cb.data.startswith("show"):
         # Handle settings callbacks
         await OpenSettings(cb)
@@ -254,5 +273,7 @@ async def start_bot():
     await asyncio.Event().wait() # Keep running
 
 if __name__ == "__main__":
-    asyncio.run(start_bot())
-
+    try:
+        asyncio.run(start_bot())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Bot stopping...")
