@@ -19,6 +19,10 @@ __pycache__/
 downloads/
 logs/
 
+# ... other ignores ...
+.env
+
+
 # Ignore project/editor specific files
 .idea/
 .vscode/
