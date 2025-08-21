@@ -1,27 +1,25 @@
-# Python
+# Ignore Git files
+.git
+.gitignore
+
+# Ignore Docker files
+Dockerfile
+
+# Ignore Python cache
 __pycache__/
-*.py[cod]
-.Python
-build/
-dist/
-*.egg-info/
-.installed.cfg
-*.egg
-.env
-.venv
-env/
-venv/
+*.pyc
+*.pyo
 
-# IDEs
-.vscode/
-.idea/
-
-# Bot specific files
-downloads/
-logs/
+# Ignore local databases and session files
+*.db
 *.session
 *.session-journal
 
-# OS
-.DS_Store
-Thumbs.db
+# Ignore local downloads and logs
+downloads/
+logs/
+
+# Ignore project/editor specific files
+.idea/
+.vscode/
+README.md
