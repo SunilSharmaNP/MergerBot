@@ -6,6 +6,7 @@ import os
 import time
 import re
 import logging
+import sys
 from pyrogram import Client, filters
 from pyrogram.errors import FloodWait, MessageNotModified, BadMsgNotification, AuthKeyUnregistered
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
@@ -32,19 +33,21 @@ cleanup_manager = CleanupManager()
 
 def create_client():
     """Create Pyrogram client with better session handling"""
-    session_file = f"/tmp/{Config.SESSION_NAME}"
+    # Using a persistent volume for the session is better in Docker
+    session_file = f"{Config.SESSION_NAME}" 
     
-    # Remove old session if it exists to avoid time sync issues
-    if os.path.exists(f"{session_file}.session"):
+    # The old logic for removing session is fine, but ensure path is correct inside docker
+    session_path = f"{session_file}.session"
+    if os.path.exists(session_path):
         try:
-            os.remove(f"{session_file}.session")
-            logger.info("Removed old session file")
-        except:
-            pass
+            os.remove(session_path)
+            logger.info(f"Removed old session file: {session_path}")
+        except OSError as e:
+            logger.warning(f"Could not remove old session file: {e}")
     
     return Client(
-        session_name=session_file,
-        api_id=int(Config.API_ID),
+        session_name=session_file,  # <<<--- यहाँ 'name' को 'session_name' में बदल दिया गया है
+        api_id=Config.API_ID,
         api_hash=Config.API_HASH,
         bot_token=Config.BOT_TOKEN,
         workers=4,
@@ -267,42 +270,24 @@ async def broadcast_command(bot, message):
         await message.reply_text("Reply to a message to broadcast it.")
 
 async def start_bot():
-    """Enhanced bot startup with retry logic"""
+    """Start the bot with robust error handling."""
     logger.info("Starting Enhanced VideoMerge Bot...")
-    
-    max_retries = 5
-    retry_delay = 10
-    
-    for attempt in range(max_retries):
-        try:
-            # Wait a bit before each retry
-            if attempt > 0:
-                logger.info(f"Retry attempt {attempt + 1}/{max_retries} in {retry_delay} seconds...")
-                await asyncio.sleep(retry_delay)
-                
-                # Recreate client for retry
-                global NubBot
-                await NubBot.stop()
-                NubBot = create_client()
-            
-            await NubBot.start()
-            logger.info("Bot started successfully!")
-            
-            # Start scheduled cleanup
-            asyncio.create_task(cleanup_manager.start_cleanup_scheduler())
-            
-            # Keep running
-            await asyncio.Event().wait()
-            
-        except (BadMsgNotification, AuthKeyUnregistered) as e:
-            logger.error(f"Telegram auth error (attempt {attempt + 1}): {e}")
-            if attempt == max_retries - 1:
-                logger.error("Max retries reached. Please check your credentials and try again.")
-                raise
-        except Exception as e:
-            logger.error(f"Startup error (attempt {attempt + 1}): {e}")
-            if attempt == max_retries - 1:
-                raise
+    try:
+        await NubBot.start()
+        logger.info("Bot started successfully!")
+        
+        # Start scheduled cleanup
+        asyncio.create_task(cleanup_manager.start_cleanup_scheduler())
+        
+        # Keep running
+        await asyncio.Event().wait()
+        
+    except (BadMsgNotification, AuthKeyUnregistered) as e:
+        logger.error(f"Fatal Telegram auth error: {e}. Exiting. Docker should restart the container.")
+        sys.exit(1) # Exit with a non-zero code to indicate an error
+    except Exception as e:
+        logger.error(f"A fatal error occurred during startup: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     try:
@@ -310,5 +295,4 @@ if __name__ == "__main__":
     except (KeyboardInterrupt, SystemExit):
         logger.info("Bot stopping...")
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        
+        logger.error(f"Fatal error in main execution: {e}")
