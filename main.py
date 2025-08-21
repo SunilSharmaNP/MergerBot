@@ -31,34 +31,17 @@ QueueDB = {}
 ReplyDB = {}
 cleanup_manager = CleanupManager()
 
-# ... (आपकी फ़ाइल का ऊपरी हिस्सा वैसा ही है) ...
+# --- > > > अंतिम और सही क्लाइंट आरंभीकरण < < < ---
+# Pyrogram को सत्र फ़ाइल को स्वयं प्रबंधित करने दें, यह अधिक स्थिर है।
+NubBot = Client(
+    name=Config.SESSION_NAME,  # Pyrogram v2 के लिए 'name' का उपयोग करें
+    api_id=Config.API_ID,
+    api_hash=Config.API_HASH,
+    bot_token=Config.BOT_TOKEN,
+    workers=4,
+    sleep_threshold=60
+)
 
-def create_client():
-    """Create Pyrogram client with better session handling"""
-    # <<<--- बस इस एक लाइन को बदलें ---<<<
-    session_name = "my_new_session_v1"  # Config.SESSION_NAME को एक नए नाम से बदलें
-
-    # बाकी का फ़ंक्शन वैसा ही रहेगा
-    for f in glob.glob(f"{session_name}.session*"):
-        try:
-            os.remove(f)
-            logger.info(f"Removed old session component: {f}")
-        except OSError as e:
-            logger.warning(f"Could not remove old session file {f}: {e}")
-    
-    return Client(
-        session_name=session_name,
-        api_id=Config.API_ID,
-        api_hash=Config.API_HASH,
-        bot_token=Config.BOT_TOKEN,
-        workers=4,
-        sleep_threshold=60
-    )
-
-# ... (आपकी फ़ाइल का बाकी हिस्सा वैसा ही है) ... 
-
-# Initialize bot
-NubBot = create_client()
 
 def is_direct_video_url(text: str) -> bool:
     """Check if text contains a direct video URL"""
