@@ -7,7 +7,7 @@ import time
 import re
 import logging
 from pyrogram import Client, filters
-from pyrogram.errors import FloodWait, MessageNotModified
+from pyrogram.errors import FloodWait, MessageNotModified, BadMsgNotification, AuthKeyUnregistered
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 
 from configs import Config
@@ -25,18 +25,34 @@ from helpers.broadcast import broadcast_handler
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Initialize bot
-NubBot = Client(
-    session_name=Config.SESSION_NAME,
-    api_id=int(Config.API_ID),
-    api_hash=Config.API_HASH,
-    bot_token=Config.BOT_TOKEN
-)
-
 # Global dictionaries for queue management
 QueueDB = {}
 ReplyDB = {}
 cleanup_manager = CleanupManager()
+
+def create_client():
+    """Create Pyrogram client with better session handling"""
+    session_file = f"/tmp/{Config.SESSION_NAME}"
+    
+    # Remove old session if it exists to avoid time sync issues
+    if os.path.exists(f"{session_file}.session"):
+        try:
+            os.remove(f"{session_file}.session")
+            logger.info("Removed old session file")
+        except:
+            pass
+    
+    return Client(
+        session_name=session_file,
+        api_id=int(Config.API_ID),
+        api_hash=Config.API_HASH,
+        bot_token=Config.BOT_TOKEN,
+        workers=4,
+        sleep_threshold=60
+    )
+
+# Initialize bot
+NubBot = create_client()
 
 def is_direct_video_url(text: str) -> bool:
     """Check if text contains a direct video URL"""
@@ -49,6 +65,7 @@ def is_direct_video_url(text: str) -> bool:
         return any(indicator.lower() in text.lower() for indicator in video_indicators)
     return False
 
+# Your existing handlers remain the same...
 @NubBot.on_message(filters.command(["start", "ping"]) & filters.private)
 async def start_handler(bot, message):
     try:
@@ -64,7 +81,7 @@ async def start_handler(bot, message):
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📚 Help", callback_data="help"),
                  InlineKeyboardButton("⚙️ Settings", callback_data="settings")],
-                [InlineKeyboardButton("👨💻 Developer", url="https://t.me/AbirHasan2005")]
+                [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/AbirHasan2005")]
             ])
         )
     except Exception as e:
@@ -103,7 +120,8 @@ async def merge_handler(bot, message):
             duration = await get_video_duration(merged_video)
             width, height = await get_video_resolution(merged_video)
             file_size = os.path.getsize(merged_video)
-            thumbnail_path = (await merger.generate_thumbnails(merged_video, count=1)) if await merger.generate_thumbnails(merged_video, count=1) else None
+            thumbnails = await merger.generate_thumbnails(merged_video, count=1)
+            thumbnail_path = thumbnails[0] if thumbnails else None
             
             await UploadVideo(bot, message, merged_video, width, height, duration, thumbnail_path, file_size)
             
@@ -174,7 +192,6 @@ async def media_handler(bot, message):
         logger.error(f"Media handler error: {e}")
         await message.reply_text(f"❌ **Error:** `{str(e)}`")
 
-
 @NubBot.on_message(filters.text & filters.private & ~filters.command(["start", "ping", "help", "settings", "merge", "clear", "broadcast"]))
 async def url_handler(bot, message):
     user_id = message.from_user.id
@@ -224,21 +241,10 @@ async def callback_handler(bot, cb: CallbackQuery):
     user_id = cb.from_user.id
     
     if cb.data == "help":
-        await cb.message.edit_text(Config.HELP_TEXT.format(max_videos=Config.MAX_VIDEOS), reply_markup=cb.message.reply_markup)
+        await cb.message.edit_text(Config.HELP_TEXT.format(max_videos=Config.MAX_VIDEOS))
     elif cb.data == "settings":
         await OpenSettings(cb.message)
     elif cb.data == "merge_now":
-        await cb.message.delete()
-        # This needs a message object, not a callback query's message
-        # A bit tricky, we might need to find the original command message to reply to.
-        # For simplicity, sending a new message.
-        await bot.send_message(cb.message.chat.id, "Merge command received from button press. Starting now...")
-        # A better approach would be to pass the original message object around.
-        # But for a quick fix, let's assume we need to trigger merge_handler differently.
-        # This is a conceptual fix; the `merge_handler` expects `message` to have `from_user`.
-        # cb.message doesn't always have this. We use cb.from_user.
-        
-        # A simple fake message object to satisfy the handler's needs
         class FakeMessage:
             def __init__(self, user, chat):
                 self.from_user = user
@@ -248,12 +254,8 @@ async def callback_handler(bot, cb: CallbackQuery):
 
         fake_message = FakeMessage(cb.from_user, cb.message.chat)
         await merge_handler(bot, fake_message)
-        
     elif cb.data == "clear_queue":
-        await clear_handler(bot, cb.message) # cb.message works here
-    elif cb.data.startswith("trigger") or cb.data.startswith("show"):
-        # Handle settings callbacks
-        await OpenSettings(cb)
+        await clear_handler(bot, cb.message)
 
     await cb.answer()
 
@@ -265,15 +267,48 @@ async def broadcast_command(bot, message):
         await message.reply_text("Reply to a message to broadcast it.")
 
 async def start_bot():
+    """Enhanced bot startup with retry logic"""
     logger.info("Starting Enhanced VideoMerge Bot...")
-    await NubBot.start()
-    logger.info("Bot started successfully!")
-    # Start scheduled cleanup
-    asyncio.create_task(cleanup_manager.start_cleanup_scheduler())
-    await asyncio.Event().wait() # Keep running
+    
+    max_retries = 5
+    retry_delay = 10
+    
+    for attempt in range(max_retries):
+        try:
+            # Wait a bit before each retry
+            if attempt > 0:
+                logger.info(f"Retry attempt {attempt + 1}/{max_retries} in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                
+                # Recreate client for retry
+                global NubBot
+                await NubBot.stop()
+                NubBot = create_client()
+            
+            await NubBot.start()
+            logger.info("Bot started successfully!")
+            
+            # Start scheduled cleanup
+            asyncio.create_task(cleanup_manager.start_cleanup_scheduler())
+            
+            # Keep running
+            await asyncio.Event().wait()
+            
+        except (BadMsgNotification, AuthKeyUnregistered) as e:
+            logger.error(f"Telegram auth error (attempt {attempt + 1}): {e}")
+            if attempt == max_retries - 1:
+                logger.error("Max retries reached. Please check your credentials and try again.")
+                raise
+        except Exception as e:
+            logger.error(f"Startup error (attempt {attempt + 1}): {e}")
+            if attempt == max_retries - 1:
+                raise
 
 if __name__ == "__main__":
     try:
         asyncio.run(start_bot())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Bot stopping...")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        
