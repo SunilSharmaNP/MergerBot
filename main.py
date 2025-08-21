@@ -31,28 +31,31 @@ QueueDB = {}
 ReplyDB = {}
 cleanup_manager = CleanupManager()
 
+# ... (आपकी फ़ाइल का ऊपरी हिस्सा वैसा ही है) ...
+
 def create_client():
     """Create Pyrogram client with better session handling"""
-    # Using a persistent volume for the session is better in Docker
-    session_file = f"{Config.SESSION_NAME}" 
-    
-    # The old logic for removing session is fine, but ensure path is correct inside docker
-    session_path = f"{session_file}.session"
-    if os.path.exists(session_path):
+    # <<<--- बस इस एक लाइन को बदलें ---<<<
+    session_name = "my_new_session_v1"  # Config.SESSION_NAME को एक नए नाम से बदलें
+
+    # बाकी का फ़ंक्शन वैसा ही रहेगा
+    for f in glob.glob(f"{session_name}.session*"):
         try:
-            os.remove(session_path)
-            logger.info(f"Removed old session file: {session_path}")
+            os.remove(f)
+            logger.info(f"Removed old session component: {f}")
         except OSError as e:
-            logger.warning(f"Could not remove old session file: {e}")
+            logger.warning(f"Could not remove old session file {f}: {e}")
     
     return Client(
-        session_name=session_file,  # <<<--- यहाँ 'name' को 'session_name' में बदल दिया गया है
+        session_name=session_name,
         api_id=Config.API_ID,
         api_hash=Config.API_HASH,
         bot_token=Config.BOT_TOKEN,
         workers=4,
         sleep_threshold=60
     )
+
+# ... (आपकी फ़ाइल का बाकी हिस्सा वैसा ही है) ... 
 
 # Initialize bot
 NubBot = create_client()
